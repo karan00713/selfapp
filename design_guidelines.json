@@ -1,0 +1,155 @@
+{
+  "identity": {
+    "name": "E1: The Anti-AI Designer",
+    "theme": "Swiss Utility",
+    "archetype": "The Performance Pro",
+    "principles": [
+      "Fusion over Imitation: Mix Swiss International Style with SaaS Utility.",
+      "Content is King: Data clarity is the primary aesthetic.",
+      "Grid is God: Strict alignment, asymmetry for interest.",
+      "Contrast: High contrast for readability, minimal decoration."
+    ]
+  },
+  "typography": {
+    "primary_font": "IBM Plex Sans",
+    "heading_font": "Chivo",
+    "mono_font": "JetBrains Mono",
+    "weights": {
+      "light": 300,
+      "regular": 400,
+      "medium": 500,
+      "bold": 700,
+      "black": 900
+    },
+    "usage": {
+      "h1": "font-heading font-black text-4xl tracking-tight text-primary",
+      "h2": "font-heading font-bold text-2xl tracking-tight text-primary",
+      "h3": "font-heading font-bold text-xl tracking-tight text-primary",
+      "body": "font-sans text-base text-slate-600 leading-relaxed",
+      "caption": "font-sans text-sm text-slate-500",
+      "code": "font-mono text-sm bg-slate-100 px-1 py-0.5 rounded-sm text-slate-900"
+    },
+    "google_fonts_import": "https://fonts.googleapis.com/css2?family=Chivo:wght@300;400;700;900&family=IBM+Plex+Sans:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap"
+  },
+  "colors": {
+    "palette": {
+      "background": "#F8FAFC",
+      "foreground": "#0F172A",
+      "primary": "#0F172A",
+      "primary_foreground": "#F8FAFC",
+      "secondary": "#FFFFFF",
+      "secondary_foreground": "#0F172A",
+      "accent": "#2563EB",
+      "accent_foreground": "#FFFFFF",
+      "destructive": "#EF4444",
+      "destructive_foreground": "#FFFFFF",
+      "border": "#E2E8F0",
+      "input": "#E2E8F0",
+      "ring": "#0F172A"
+    },
+    "usage_rules": {
+      "dashboard_bg": "bg-slate-50",
+      "card_bg": "bg-white",
+      "text_primary": "text-slate-900",
+      "text_secondary": "text-slate-500",
+      "border_subtle": "border-slate-200",
+      "border_strong": "border-slate-900"
+    }
+  },
+  "layout": {
+    "spacing_scale": [
+      "p-1", "p-2", "p-4", "p-6", "p-8", "p-12", "p-16", "p-24", "p-32"
+    ],
+    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    "grid_system": {
+      "dashboard": "grid grid-cols-1 md:grid-cols-12 gap-6",
+      "card_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+    },
+    "radius": "rounded-sm"
+  },
+  "components": {
+    "buttons": {
+      "default": "h-10 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+      "outline": "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+      "ghost": "hover:bg-accent hover:text-accent-foreground"
+    },
+    "cards": {
+      "wrapper": "rounded-sm border bg-card text-card-foreground shadow-sm",
+      "header": "flex flex-col space-y-1.5 p-6",
+      "content": "p-6 pt-0",
+      "footer": "flex items-center p-6 pt-0"
+    },
+    "inputs": {
+      "base": "flex h-10 w-full rounded-sm border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+    },
+    "tables": {
+      "wrapper": "w-full overflow-auto rounded-sm border",
+      "table": "w-full caption-bottom text-sm",
+      "header_row": "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+      "header_cell": "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      "row": "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+      "cell": "p-4 align-middle [&:has([role=checkbox])]:pr-0"
+    }
+  },
+  "visual_enhancers": {
+    "ledger_line": "border-t-4 border-t-primary",
+    "glass_panel": "bg-white/80 backdrop-blur-md border border-white/20 shadow-xl",
+    "noise_texture": "opacity-5 pointer-events-none fixed inset-0 z-50 mix-blend-overlay",
+    "gradients": "None. Use solid colors and high contrast."
+  },
+  "assets": {
+    "icons": "lucide-react",
+    "images": {
+      "login_bg": "https://images.unsplash.com/photo-1666618207644-4de0226a3f85?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBtaW5pbWFsaXN0JTIwb2ZmaWNlJTIwYXJjaGl0ZWN0dXJlfGVufDB8fHx8MTc2ODU3NjIzMnww&ixlib=rb-4.1.0&q=85",
+      "empty_state": "https://images.unsplash.com/photo-1571176242081-bf093bb3a10d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBtaW5pbWFsaXN0JTIwb2ZmaWNlJTIwYXJjaGl0ZWN0dXJlfGVufDB8fHx8MTc2ODU3NjIzMnww&ixlib=rb-4.1.0&q=85",
+      "dashboard_cover": "https://images.unsplash.com/photo-1749310726959-d8fccfef7ee4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHw0fHxtb2Rlcm4lMjBtaW5pbWFsaXN0JTIwb2ZmaWNlJTIwYXJjaGl0ZWN0dXJlfGVufDB8fHx8MTc2ODU3NjIzMnww&ixlib=rb-4.1.0&q=85"
+    }
+  },
+  "functionality_design": {
+    "invoice_page": {
+      "layout": "Split view: Form on left (scrollable), Live Preview on right (sticky).",
+      "paper_metaphor": "The preview container should have a white background, drop-shadow-lg, and aspect-ratio-[1/1.414] (A4).",
+      "typography": "Use JetBrains Mono for all numerical values and codes (HSN/SAC, GSTIN)."
+    },
+    "dashboard": {
+      "layout": "Sidebar navigation + Top Header. Content in a dense grid.",
+      "widgets": "Use 'Card' components with 'Ledger Line' styling (top border accent).",
+      "stats": "Big numbers (text-4xl font-heading font-black) with small labels."
+    },
+    "login": {
+      "layout": "Split screen. Left: Branding + Form. Right: Architectural Image with grayscale filter.",
+      "branding": "DeepByte Verxe LLP logo (text-based, Chivo font) at top left."
+    }
+  },
+  "instructions_to_main_agent": [
+    "Install fonts: `npm install @fontsource/chivo @fontsource/ibm-plex-sans @fontsource/jetbrains-mono` or add via Google Fonts link in index.html.",
+    "Configure Tailwind: Update `tailwind.config.js` to include the custom fonts and colors defined above.",
+    "Use `lucide-react` for all icons.",
+    "Implement the 'Swiss Utility' theme: High contrast, sharp borders, no gradients.",
+    "Ensure all interactive elements have `data-testid`.",
+    "For the Invoice Preview, ensure it is printable (CSS `@media print`).",
+    "Use `sonner` for toast notifications.",
+    "Strictly follow the spacing scale. Do not use arbitrary values."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy",
+    "Use glass-morphism effects with backdrop filters (12-24px blur)",
+    "You MUST NOT apply universal transition. Eg: `transition: all`. This results in breaking transforms. Always add transitions for specific interactive elements like button, input excluding transforms",
+    "You MUST NOT center align the app container, ie do not add `.App { text-align: center; }` in the css file. This disrupts the human natural reading flow of text",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯📚🎭🎬🎪🎉🎊🎁🎀🎂🍰🎈🎨🎰💰💵💳🏦💎🪙💸🤑📊📈📉💹🔢🏆🥇 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Main agent relies on these image URLs. Missing categories (especially sponsor logos) = main agent will use placeholder text which is FORBIDDEN",
+    "Prioritize using pre-existing components from src/components/ui when applicable",
+    "Create new components that match the style and conventions of existing components when needed",
+    "Examine existing components to understand the project's component patterns before creating new ones",
+    "Components MUST use named exports (export const ComponentName = ...)",
+    "Pages MUST use default exports (export default function PageName() {...})",
+    "Use `sonner` for toasts. Sonner component are located in `/app/src/components/ui/sonner.tsx`"
+  ]
+}
