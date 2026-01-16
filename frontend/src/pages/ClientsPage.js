@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import api from '@/lib/api';
+import api from '@/lib/electronAPI';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,48 +11,47 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Sidebar } from '@/components/Sidebar';
-import { Plus, Search, User, Building2, Trash2, Edit } from 'lucide-react';
-import { toast } from 'sonner';
-import { INDIAN_STATES } from '@/lib/constants';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Sidebar } from '@/components/Sidebar';
+import { Plus, Pencil, Trash2, Building2, User } from 'lucide-react';
+import { toast } from 'sonner';
+import { INDIAN_STATES } from '@/lib/constants';
+
+const initialFormState = {
+  client_type: 'individual',
+  name: '',
+  address: '',
+  state: '',
+  phone: '',
+  email: '',
+  aadhar_number: '',
+  pan_number: '',
+  cin: '',
+  gst_number: '',
+};
 
 export default function ClientsPage() {
-  const navigate = useNavigate();
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showDialog, setShowDialog] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
-  const [deleteClientId, setDeleteClientId] = useState(null);
-
-  const [formData, setFormData] = useState({
-    client_type: 'individual',
-    name: '',
-    address: '',
-    state: '',
-    phone: '',
-    email: '',
-    aadhar_number: '',
-    pan_number: '',
-    cin: '',
-    gst_number: '',
-  });
+  const [formData, setFormData] = useState(initialFormState);
+  const [submitting, setSubmitting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetchClients();
@@ -61,8 +59,8 @@ export default function ClientsPage() {
 
   const fetchClients = async () => {
     try {
-      const response = await api.get('/clients');
-      setClients(response.data);
+      const data = await api.getClients();
+      setClients(data);
     } catch (error) {
       toast.error('Failed to load clients');
     } finally {
@@ -72,64 +70,79 @@ export default function ClientsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    setSubmitting(true);
 
     try {
       if (editingClient) {
-        await api.put(`/clients/${editingClient.id}`, formData);
+        await api.updateClient(editingClient.id, formData);
         toast.success('Client updated successfully');
       } else {
-        await api.post('/clients', formData);
+        await api.createClient(formData);
         toast.success('Client created successfully');
       }
       
-      setShowDialog(false);
-      resetForm();
+      setDialogOpen(false);
+      setFormData(initialFormState);
+      setEditingClient(null);
       fetchClients();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to save client');
+      toast.error(error.message || 'Failed to save client');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  const handleDelete = async () => {
-    try {
-      await api.delete(`/clients/${deleteClientId}`);
-      toast.success('Client deleted successfully');
-      setDeleteClientId(null);
-      fetchClients();
-    } catch (error) {
-      toast.error('Failed to delete client');
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      client_type: 'individual',
-      name: '',
-      address: '',
-      state: '',
-      phone: '',
-      email: '',
-      aadhar_number: '',
-      pan_number: '',
-      cin: '',
-      gst_number: '',
-    });
-    setEditingClient(null);
-  };
-
-  const openEditDialog = (client) => {
+  const handleEdit = (client) => {
     setEditingClient(client);
-    setFormData(client);
-    setShowDialog(true);
+    setFormData({
+      client_type: client.client_type,
+      name: client.name,
+      address: client.address,
+      state: client.state,
+      phone: client.phone,
+      email: client.email,
+      aadhar_number: client.aadhar_number || '',
+      pan_number: client.pan_number || '',
+      cin: client.cin || '',
+      gst_number: client.gst_number || '',
+    });
+    setDialogOpen(true);
   };
 
-  const filteredClients = clients.filter((client) =>
-    client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.email.toLowerCase().includes(searchTerm.toLowerCase())
+  const handleDelete = async (clientId) => {
+    if (window.confirm('Are you sure you want to delete this client?')) {
+      try {
+        await api.deleteClient(clientId);
+        toast.success('Client deleted successfully');
+        fetchClients();
+      } catch (error) {
+        toast.error('Failed to delete client');
+      }
+    }
+  };
+
+  const handleDialogClose = () => {
+    setDialogOpen(false);
+    setEditingClient(null);
+    setFormData(initialFormState);
+  };
+
+  const filteredClients = clients.filter(client => 
+    client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    client.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    client.phone.includes(searchQuery)
   );
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -143,294 +156,282 @@ export default function ClientsPage() {
               <h1 className="font-heading font-black text-4xl tracking-tight text-primary">
                 Clients
               </h1>
-              <p className="text-slate-500 mt-2">Manage your client database</p>
+              <p className="text-slate-500 mt-2">Manage your clients and their information</p>
             </div>
-            <Button 
-              data-testid="add-client-button"
-              onClick={() => {
-                resetForm();
-                setShowDialog(true);
-              }}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Client
-            </Button>
+
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button data-testid="add-client-button" onClick={() => { setEditingClient(null); setFormData(initialFormState); }}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Client
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="font-heading font-bold text-2xl">
+                    {editingClient ? 'Edit Client' : 'Add New Client'}
+                  </DialogTitle>
+                </DialogHeader>
+
+                <form onSubmit={handleSubmit} className="space-y-6 mt-4">
+                  {/* Client Type */}
+                  <div className="space-y-2">
+                    <Label>Client Type *</Label>
+                    <Select
+                      value={formData.client_type}
+                      onValueChange={(value) => setFormData({ ...formData, client_type: value })}
+                    >
+                      <SelectTrigger data-testid="client-type-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="individual">
+                          <div className="flex items-center gap-2">
+                            <User className="w-4 h-4" />
+                            Individual
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="organization">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="w-4 h-4" />
+                            Organization
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Basic Info */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2 space-y-2">
+                      <Label>Name *</Label>
+                      <Input
+                        data-testid="client-name-input"
+                        required
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        placeholder={formData.client_type === 'individual' ? 'Full Name' : 'Company Name'}
+                      />
+                    </div>
+
+                    <div className="col-span-2 space-y-2">
+                      <Label>Address *</Label>
+                      <Input
+                        data-testid="client-address-input"
+                        required
+                        value={formData.address}
+                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        placeholder="Complete address"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>State *</Label>
+                      <Select
+                        value={formData.state}
+                        onValueChange={(value) => setFormData({ ...formData, state: value })}
+                      >
+                        <SelectTrigger data-testid="client-state-select">
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {INDIAN_STATES.map((state) => (
+                            <SelectItem key={state} value={state}>
+                              {state}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Phone *</Label>
+                      <Input
+                        data-testid="client-phone-input"
+                        required
+                        type="tel"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        placeholder="+91-XXXXXXXXXX"
+                      />
+                    </div>
+
+                    <div className="col-span-2 space-y-2">
+                      <Label>Email *</Label>
+                      <Input
+                        data-testid="client-email-input"
+                        required
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        placeholder="email@example.com"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Type-specific fields */}
+                  {formData.client_type === 'individual' ? (
+                    <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                      <div className="space-y-2">
+                        <Label>Aadhar Number</Label>
+                        <Input
+                          data-testid="client-aadhar-input"
+                          value={formData.aadhar_number}
+                          onChange={(e) => setFormData({ ...formData, aadhar_number: e.target.value })}
+                          placeholder="XXXX XXXX XXXX"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>PAN Number</Label>
+                        <Input
+                          data-testid="client-pan-input"
+                          value={formData.pan_number}
+                          onChange={(e) => setFormData({ ...formData, pan_number: e.target.value })}
+                          placeholder="XXXXXXXXXX"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                      <div className="space-y-2">
+                        <Label>CIN</Label>
+                        <Input
+                          data-testid="client-cin-input"
+                          value={formData.cin}
+                          onChange={(e) => setFormData({ ...formData, cin: e.target.value })}
+                          placeholder="Corporate Identification Number"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>PAN Number</Label>
+                        <Input
+                          data-testid="client-org-pan-input"
+                          value={formData.pan_number}
+                          onChange={(e) => setFormData({ ...formData, pan_number: e.target.value })}
+                          placeholder="XXXXXXXXXX"
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-2">
+                        <Label>GST Number</Label>
+                        <Input
+                          data-testid="client-gst-input"
+                          value={formData.gst_number}
+                          onChange={(e) => setFormData({ ...formData, gst_number: e.target.value })}
+                          placeholder="GST Registration Number"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-4">
+                    <Button type="button" variant="outline" onClick={handleDialogClose}>
+                      Cancel
+                    </Button>
+                    <Button data-testid="save-client-button" type="submit" disabled={submitting} className="flex-1">
+                      {submitting ? 'Saving...' : (editingClient ? 'Update Client' : 'Create Client')}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
 
           {/* Search */}
           <Card className="mb-6">
             <CardContent className="pt-6">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <Input
-                  data-testid="search-clients-input"
-                  placeholder="Search clients by name or email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
+              <Input
+                data-testid="client-search-input"
+                placeholder="Search clients by name, email, or phone..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="max-w-md"
+              />
             </CardContent>
           </Card>
 
-          {/* Clients Grid */}
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-            </div>
-          ) : filteredClients.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <p className="text-slate-500">No clients found</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredClients.map((client) => (
-                <Card 
-                  key={client.id} 
-                  data-testid={`client-card-${client.id}`}
-                  className="border-t-4 border-t-primary hover:shadow-lg transition-shadow"
-                >
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        {client.client_type === 'individual' ? (
-                          <User className="w-8 h-8 text-accent" />
-                        ) : (
-                          <Building2 className="w-8 h-8 text-accent" />
-                        )}
-                        <div>
-                          <CardTitle className="font-heading font-bold text-lg">
-                            {client.name}
-                          </CardTitle>
-                          <p className="text-xs text-slate-500 mt-1">
-                            {client.client_type === 'individual' ? 'Individual' : 'Organization'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2 text-sm">
-                      <p className="text-slate-600">{client.email}</p>
-                      <p className="text-slate-600">{client.phone}</p>
-                      <p className="text-slate-500 text-xs">{client.state}</p>
-                      {client.client_type === 'organization' && client.gst_number && (
-                        <p className="font-mono text-xs text-slate-600">GST: {client.gst_number}</p>
-                      )}
-                    </div>
-                    
-                    <div className="flex gap-2 mt-4">
-                      <Button
-                        data-testid={`edit-client-${client.id}-button`}
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => openEditDialog(client)}
-                      >
-                        <Edit className="w-4 h-4 mr-1" />
-                        Edit
-                      </Button>
-                      <Button
-                        data-testid={`delete-client-${client.id}-button`}
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive hover:bg-destructive hover:text-white"
-                        onClick={() => setDeleteClientId(client.id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+          {/* Clients Table */}
+          <Card>
+            <CardHeader className="border-t-4 border-t-primary">
+              <CardTitle className="font-heading font-bold text-xl">
+                All Clients ({filteredClients.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {filteredClients.length === 0 ? (
+                <div className="text-center py-12 text-slate-500">
+                  <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p className="font-medium">No clients found</p>
+                  <p className="text-sm mt-1">Add your first client to get started</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>State</TableHead>
+                      <TableHead>Contact</TableHead>
+                      <TableHead>GST/PAN</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredClients.map((client) => (
+                      <TableRow key={client.id} data-testid={`client-row-${client.id}`}>
+                        <TableCell className="font-medium">{client.name}</TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-sm text-xs font-medium ${
+                            client.client_type === 'organization' 
+                              ? 'bg-blue-100 text-blue-800' 
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {client.client_type === 'organization' ? (
+                              <Building2 className="w-3 h-3" />
+                            ) : (
+                              <User className="w-3 h-3" />
+                            )}
+                            {client.client_type}
+                          </span>
+                        </TableCell>
+                        <TableCell>{client.state}</TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <p>{client.email}</p>
+                            <p className="text-slate-500">{client.phone}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {client.gst_number || client.pan_number || '-'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              data-testid={`edit-client-${client.id}`}
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEdit(client)}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              data-testid={`delete-client-${client.id}`}
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete(client.id)}
+                            >
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
-
-      {/* Add/Edit Client Dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="font-heading font-bold text-2xl">
-              {editingClient ? 'Edit Client' : 'Add New Client'}
-            </DialogTitle>
-          </DialogHeader>
-          
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <Label>Client Type</Label>
-              <Select
-                value={formData.client_type}
-                onValueChange={(value) => setFormData({ ...formData, client_type: value })}
-              >
-                <SelectTrigger data-testid="client-type-select">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="individual">Individual</SelectItem>
-                  <SelectItem value="organization">Organization</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Name *</Label>
-                <Input
-                  data-testid="client-name-input"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Email *</Label>
-                <Input
-                  data-testid="client-email-input"
-                  type="email"
-                  required
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Phone *</Label>
-                <Input
-                  data-testid="client-phone-input"
-                  required
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>State *</Label>
-                <Select
-                  value={formData.state}
-                  onValueChange={(value) => setFormData({ ...formData, state: value })}
-                >
-                  <SelectTrigger data-testid="client-state-select">
-                    <SelectValue placeholder="Select state" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {INDIAN_STATES.map((state) => (
-                      <SelectItem key={state} value={state}>
-                        {state}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Address *</Label>
-              <Input
-                data-testid="client-address-input"
-                required
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              />
-            </div>
-
-            {formData.client_type === 'individual' ? (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Aadhar Number</Label>
-                  <Input
-                    data-testid="client-aadhar-input"
-                    value={formData.aadhar_number}
-                    onChange={(e) => setFormData({ ...formData, aadhar_number: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>PAN Number</Label>
-                  <Input
-                    data-testid="client-pan-input"
-                    value={formData.pan_number}
-                    onChange={(e) => setFormData({ ...formData, pan_number: e.target.value })}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>CIN</Label>
-                  <Input
-                    data-testid="client-cin-input"
-                    value={formData.cin}
-                    onChange={(e) => setFormData({ ...formData, cin: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>GST Number</Label>
-                  <Input
-                    data-testid="client-gst-input"
-                    value={formData.gst_number}
-                    onChange={(e) => setFormData({ ...formData, gst_number: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>PAN Number</Label>
-                  <Input
-                    data-testid="client-pan-input"
-                    value={formData.pan_number}
-                    onChange={(e) => setFormData({ ...formData, pan_number: e.target.value })}
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-3 justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setShowDialog(false);
-                  resetForm();
-                }}
-              >
-                Cancel
-              </Button>
-              <Button data-testid="submit-client-button" type="submit" disabled={loading}>
-                {loading ? 'Saving...' : editingClient ? 'Update Client' : 'Create Client'}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation */}
-      <AlertDialog open={!!deleteClientId} onOpenChange={() => setDeleteClientId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this client. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              data-testid="confirm-delete-client-button"
-              onClick={handleDelete}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
