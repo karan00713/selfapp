@@ -3,93 +3,81 @@ const isElectron = () => {
   return typeof window !== 'undefined' && window.electronAPI !== undefined;
 };
 
-// For web development, fall back to REST API
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+
+// For web development, use REST API without auth (single user app)
 const webAPI = {
   async getClients() {
-    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/clients`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
+    const res = await fetch(`${BACKEND_URL}/api/clients`);
+    if (!res.ok) throw new Error('Failed to fetch clients');
     return res.json();
   },
   async getClient(id) {
-    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/clients/${id}`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
+    const res = await fetch(`${BACKEND_URL}/api/clients/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch client');
     return res.json();
   },
   async createClient(data) {
-    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/clients`, {
+    const res = await fetch(`${BACKEND_URL}/api/clients`, {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
+    if (!res.ok) throw new Error('Failed to create client');
     return res.json();
   },
   async updateClient(id, data) {
-    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/clients/${id}`, {
+    const res = await fetch(`${BACKEND_URL}/api/clients/${id}`, {
       method: 'PUT',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
+    if (!res.ok) throw new Error('Failed to update client');
     return res.json();
   },
   async deleteClient(id) {
-    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/clients/${id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    const res = await fetch(`${BACKEND_URL}/api/clients/${id}`, {
+      method: 'DELETE'
     });
+    if (!res.ok) throw new Error('Failed to delete client');
     return res.json();
   },
   async getInvoices() {
-    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/invoices`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
+    const res = await fetch(`${BACKEND_URL}/api/invoices`);
+    if (!res.ok) throw new Error('Failed to fetch invoices');
     return res.json();
   },
   async getInvoice(id) {
-    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/invoices/${id}`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
+    const res = await fetch(`${BACKEND_URL}/api/invoices/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch invoice');
     return res.json();
   },
   async createInvoice(data) {
-    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/invoices`, {
+    const res = await fetch(`${BACKEND_URL}/api/invoices`, {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
+    if (!res.ok) throw new Error('Failed to create invoice');
     return res.json();
   },
   async updateInvoice(id, data) {
-    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/invoices/${id}`, {
+    const res = await fetch(`${BACKEND_URL}/api/invoices/${id}`, {
       method: 'PUT',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
+    if (!res.ok) throw new Error('Failed to update invoice');
     return res.json();
   },
   async getDashboardStats() {
-    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/dashboard/stats`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
+    const res = await fetch(`${BACKEND_URL}/api/dashboard/stats`);
+    if (!res.ok) throw new Error('Failed to fetch dashboard stats');
     return res.json();
   },
   async getGSTReport(startDate, endDate) {
-    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/reports/gst?start_date=${startDate}&end_date=${endDate}`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
+    const res = await fetch(`${BACKEND_URL}/api/reports/gst?start_date=${startDate}&end_date=${endDate}`);
+    if (!res.ok) throw new Error('Failed to fetch GST report');
     return res.json();
   },
   async getLogoBase64() {
@@ -97,6 +85,7 @@ const webAPI = {
   },
   async getHSNCodes() {
     const res = await fetch('/hsn_sac_codes.json');
+    if (!res.ok) throw new Error('Failed to fetch HSN codes');
     return res.json();
   }
 };
