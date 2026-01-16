@@ -1,23 +1,15 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '@/context/AuthContext';
-import { Button } from '@/components/ui/button';
 import { 
   LayoutDashboard, 
   Users, 
   FileText, 
   BarChart3,
-  LogOut
+  BookOpen
 } from 'lucide-react';
 
 export const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth();
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
 
   const menuItems = [
     {
@@ -39,6 +31,12 @@ export const Sidebar = () => {
       testId: 'nav-invoices',
     },
     {
+      name: 'HSN/SAC Codes',
+      icon: BookOpen,
+      path: '/hsn-codes',
+      testId: 'nav-hsn-codes',
+    },
+    {
       name: 'Reports',
       icon: BarChart3,
       path: '/reports',
@@ -50,10 +48,20 @@ export const Sidebar = () => {
     <div className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen">
       {/* Logo */}
       <div className="p-6 border-b border-slate-200">
-        <h1 className="font-heading font-black text-2xl tracking-tight text-primary">
-          DeepByte Verxe
-        </h1>
-        <p className="text-xs text-slate-500 mt-1">GST Billing</p>
+        <div className="flex items-center gap-3">
+          <img 
+            src="/company_logo.jpg" 
+            alt="DeepByte Verxe" 
+            className="w-10 h-10 object-contain rounded"
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+          <div>
+            <h1 className="font-heading font-black text-xl tracking-tight text-primary">
+              DeepByte Verxe
+            </h1>
+            <p className="text-xs text-slate-500">GST Billing</p>
+          </div>
+        </div>
       </div>
 
       {/* Navigation */}
@@ -80,17 +88,10 @@ export const Sidebar = () => {
         })}
       </nav>
 
-      {/* Logout */}
-      <div className="p-4 border-t border-slate-200">
-        <Button
-          data-testid="logout-button"
-          variant="outline"
-          className="w-full justify-start"
-          onClick={handleLogout}
-        >
-          <LogOut className="w-5 h-5 mr-3" />
-          Logout
-        </Button>
+      {/* Footer */}
+      <div className="p-4 border-t border-slate-200 text-center">
+        <p className="text-xs text-slate-400">DeepByte Verxe LLP</p>
+        <p className="text-xs text-slate-400">v1.0.0</p>
       </div>
     </div>
   );
