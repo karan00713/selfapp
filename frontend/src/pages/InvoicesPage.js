@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '@/lib/api';
+import api from '@/lib/electronAPI';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,25 +11,45 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Sidebar } from '@/components/Sidebar';
-import { Plus, Search, FileText } from 'lucide-react';
+import { Plus, Eye, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function InvoicesPage() {
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState([]);
+  const [clients, setClients] = useState({});
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
-    fetchInvoices();
+    fetchData();
   }, []);
 
-  const fetchInvoices = async () => {
+  const fetchData = async () => {
     try {
-      const response = await api.get('/invoices');
-      setInvoices(response.data);
+      const [invoicesData, clientsData] = await Promise.all([
+        api.getInvoices(),
+        api.getClients()
+      ]);
+      
+      setInvoices(invoicesData);
+      
+      // Create clients lookup map
+      const clientsMap = {};
+      clientsData.forEach(client => {
+        clientsMap[client.id] = client;
+      });
+      setClients(clientsMap);
     } catch (error) {
       toast.error('Failed to load invoices');
     } finally {
@@ -52,15 +72,38 @@ export default function InvoicesPage() {
     });
   };
 
-  const filteredInvoices = invoices.filter((invoice) => {
+  const getStatusBadge = (status) => {
+    const styles = {
+      paid: 'bg-green-100 text-green-800',
+      partial: 'bg-yellow-100 text-yellow-800',
+      unpaid: 'bg-red-100 text-red-800',
+    };
+    return (
+      <span className={`px-2 py-1 rounded-sm text-xs font-medium ${styles[status]}`}>
+        {status.toUpperCase()}
+      </span>
+    );
+  };
+
+  const filteredInvoices = invoices.filter(invoice => {
+    const client = clients[invoice.client_id];
     const matchesSearch = 
-      invoice.invoice_number.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = 
-      statusFilter === 'all' || invoice.payment_status === statusFilter;
-    
+      invoice.invoice_number.includes(searchQuery) ||
+      (client?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || invoice.payment_status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -74,12 +117,9 @@ export default function InvoicesPage() {
               <h1 className="font-heading font-black text-4xl tracking-tight text-primary">
                 Invoices
               </h1>
-              <p className="text-slate-500 mt-2">Manage and track your invoices</p>
+              <p className="text-slate-500 mt-2">Manage your invoices and payments</p>
             </div>
-            <Button 
-              data-testid="create-invoice-button"
-              onClick={() => navigate('/invoices/new')}
-            >
+            <Button data-testid="create-new-invoice-btn" onClick={() => navigate('/invoices/new')}>
               <Plus className="w-4 h-4 mr-2" />
               Create Invoice
             </Button>
@@ -88,23 +128,20 @@ export default function InvoicesPage() {
           {/* Filters */}
           <Card className="mb-6">
             <CardContent className="pt-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input
-                    data-testid="search-invoices-input"
-                    placeholder="Search by invoice number..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
+              <div className="flex gap-4">
+                <Input
+                  data-testid="invoice-search-input"
+                  placeholder="Search by invoice number or client name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="max-w-md"
+                />
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger data-testid="filter-status-select">
-                    <SelectValue />
+                  <SelectTrigger data-testid="status-filter-select" className="w-48">
+                    <SelectValue placeholder="Filter by status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="unpaid">Unpaid</SelectItem>
                     <SelectItem value="partial">Partial</SelectItem>
                     <SelectItem value="paid">Paid</SelectItem>
@@ -115,86 +152,63 @@ export default function InvoicesPage() {
           </Card>
 
           {/* Invoices Table */}
-          <Card data-testid="invoices-table-card">
+          <Card>
             <CardHeader className="border-t-4 border-t-primary">
-              <CardTitle className="font-heading font-bold text-xl">All Invoices</CardTitle>
+              <CardTitle className="font-heading font-bold text-xl">
+                All Invoices ({filteredInvoices.length})
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-                </div>
-              ) : filteredInvoices.length === 0 ? (
-                <div className="text-center py-12">
-                  <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                  <p className="text-slate-500 mb-4">No invoices found</p>
-                  <Button 
-                    data-testid="create-first-invoice-button"
-                    onClick={() => navigate('/invoices/new')}
-                  >
-                    Create Your First Invoice
-                  </Button>
+              {filteredInvoices.length === 0 ? (
+                <div className="text-center py-12 text-slate-500">
+                  <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p className="font-medium">No invoices found</p>
+                  <p className="text-sm mt-1">Create your first invoice to get started</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-slate-200">
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Invoice #</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Date</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Due Date</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Amount</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Paid</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Status</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredInvoices.map((invoice) => (
-                        <tr 
-                          key={invoice.id}
-                          data-testid={`invoice-row-${invoice.invoice_number}`}
-                          className="border-b border-slate-100 hover:bg-slate-50"
-                        >
-                          <td className="py-3 px-4 font-mono text-sm text-primary font-medium">
-                            {invoice.invoice_number}
-                          </td>
-                          <td className="py-3 px-4 text-sm text-slate-600">
-                            {formatDate(invoice.invoice_date)}
-                          </td>
-                          <td className="py-3 px-4 text-sm text-slate-600">
-                            {formatDate(invoice.due_date)}
-                          </td>
-                          <td className="py-3 px-4 font-mono text-sm text-primary font-medium">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Invoice #</TableHead>
+                      <TableHead>Client</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Due Date</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredInvoices.map((invoice) => {
+                      const client = clients[invoice.client_id];
+                      return (
+                        <TableRow key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
+                          <TableCell className="font-mono font-medium">
+                            #{invoice.invoice_number}
+                          </TableCell>
+                          <TableCell>{client?.name || 'Unknown'}</TableCell>
+                          <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
+                          <TableCell>{formatDate(invoice.due_date)}</TableCell>
+                          <TableCell className="text-right font-mono font-medium">
                             {formatCurrency(invoice.total)}
-                          </td>
-                          <td className="py-3 px-4 font-mono text-sm text-slate-600">
-                            {formatCurrency(invoice.paid_amount)}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-sm text-xs font-medium ${
-                              invoice.payment_status === 'paid' ? 'bg-green-100 text-green-800' :
-                              invoice.payment_status === 'partial' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-red-100 text-red-800'
-                            }`}>
-                              {invoice.payment_status.toUpperCase()}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
+                          </TableCell>
+                          <TableCell>{getStatusBadge(invoice.payment_status)}</TableCell>
+                          <TableCell className="text-right">
                             <Button
-                              data-testid={`view-invoice-${invoice.invoice_number}-button`}
-                              variant="outline"
+                              data-testid={`view-invoice-${invoice.id}`}
+                              variant="ghost"
                               size="sm"
                               onClick={() => navigate(`/invoices/${invoice.id}`)}
                             >
+                              <Eye className="w-4 h-4 mr-1" />
                               View
                             </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
               )}
             </CardContent>
           </Card>
