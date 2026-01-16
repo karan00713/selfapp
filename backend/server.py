@@ -1,16 +1,13 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import FastAPI, APIRouter, HTTPException
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import List, Optional, Literal
-from datetime import datetime, timezone, timedelta
-import bcrypt
-import jwt
+from datetime import datetime, timezone
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -20,38 +17,13 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# JWT configuration
-JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')
-JWT_ALGORITHM = 'HS256'
-JWT_EXPIRATION_HOURS = 24 * 7  # 7 days
-
 # Create the main app without a prefix
-app = FastAPI()
+app = FastAPI(title="DeepByte Verxe GST Billing API")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
-security = HTTPBearer()
-
 # ============= Models =============
-
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str
-    name: str
-
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-class UserResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    email: str
-    name: str
-
-class TokenResponse(BaseModel):
-    token: str
-    user: UserResponse
 
 class ClientBase(BaseModel):
     client_type: Literal["individual", "organization"]
@@ -133,54 +105,23 @@ class GSTReport(BaseModel):
 
 # ============= Helper Functions =============
 
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-
-def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
-
-def create_token(email: str) -> str:
-    expiration = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
-    payload = {
-        'email': email,
-        'exp': expiration
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    try:
-        token = credentials.credentials
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        email = payload.get('email')
-        if not email:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        
-        user = await db.users.find_one({"email": email}, {"_id": 0, "password": 0})
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        
-        return user
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
 async def get_next_invoice_number() -> str:
+    """Generate next sequential invoice number starting from 0001"""
     counter = await db.invoice_counter.find_one({"name": "invoice"})
     
     if not counter:
-        # Initialize counter
-        await db.invoice_counter.insert_one({"name": "invoice", "current": 1})
-        return "0001"
+        # Initialize counter to 0, first invoice will be 0001
+        await db.invoice_counter.insert_one({"name": "invoice", "current": 0})
+        counter = {"current": 0}
     
-    current = counter["current"]
-    # Update counter atomically
+    # Increment first, then use - so first invoice is 0001
+    new_value = counter["current"] + 1
     await db.invoice_counter.update_one(
         {"name": "invoice"},
-        {"$set": {"current": current + 1}}
+        {"$set": {"current": new_value}}
     )
     
-    return str(current).zfill(4)
+    return str(new_value).zfill(4)
 
 def calculate_gst(subtotal: float, client_state: str, company_state: str = "Tamil Nadu") -> dict:
     gst_rate = 0.18  # 18% GST
@@ -195,73 +136,26 @@ def calculate_gst(subtotal: float, client_state: str, company_state: str = "Tami
         igst = round(subtotal * gst_rate, 2)
         return {"cgst": 0.0, "sgst": 0.0, "igst": igst, "total_tax": igst}
 
-# ============= Authentication Routes =============
-
-@api_router.post("/auth/register", response_model=TokenResponse)
-async def register(user_data: UserCreate):
-    # Check if user exists
-    existing_user = await db.users.find_one({"email": user_data.email})
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Create user
-    hashed_password = hash_password(user_data.password)
-    user_doc = {
-        "email": user_data.email,
-        "password": hashed_password,
-        "name": user_data.name,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    await db.users.insert_one(user_doc)
-    
-    # Generate token
-    token = create_token(user_data.email)
-    
-    return {
-        "token": token,
-        "user": {"email": user_data.email, "name": user_data.name}
-    }
-
-@api_router.post("/auth/login", response_model=TokenResponse)
-async def login(credentials: UserLogin):
-    user = await db.users.find_one({"email": credentials.email})
-    
-    if not user or not verify_password(credentials.password, user["password"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    token = create_token(credentials.email)
-    
-    return {
-        "token": token,
-        "user": {"email": user["email"], "name": user["name"]}
-    }
-
-@api_router.get("/auth/me", response_model=UserResponse)
-async def get_me(current_user = Depends(get_current_user)):
-    return current_user
-
 # ============= Client Routes =============
 
 @api_router.post("/clients", response_model=Client)
-async def create_client(client_data: ClientCreate, current_user = Depends(get_current_user)):
+async def create_client(client_data: ClientCreate):
     client_doc = client_data.model_dump()
     client_doc["id"] = str(datetime.now(timezone.utc).timestamp()).replace(".", "")
     client_doc["created_at"] = datetime.now(timezone.utc).isoformat()
-    client_doc["user_email"] = current_user["email"]
     
     await db.clients.insert_one(client_doc)
     
     return Client(**{k: v for k, v in client_doc.items() if k != "_id"})
 
 @api_router.get("/clients", response_model=List[Client])
-async def get_clients(current_user = Depends(get_current_user)):
-    clients = await db.clients.find({"user_email": current_user["email"]}, {"_id": 0}).to_list(1000)
+async def get_clients():
+    clients = await db.clients.find({}, {"_id": 0}).to_list(1000)
     return clients
 
 @api_router.get("/clients/{client_id}", response_model=Client)
-async def get_client(client_id: str, current_user = Depends(get_current_user)):
-    client = await db.clients.find_one({"id": client_id, "user_email": current_user["email"]}, {"_id": 0})
+async def get_client(client_id: str):
+    client = await db.clients.find_one({"id": client_id}, {"_id": 0})
     
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -269,9 +163,9 @@ async def get_client(client_id: str, current_user = Depends(get_current_user)):
     return client
 
 @api_router.put("/clients/{client_id}", response_model=Client)
-async def update_client(client_id: str, client_data: ClientCreate, current_user = Depends(get_current_user)):
+async def update_client(client_id: str, client_data: ClientCreate):
     result = await db.clients.update_one(
-        {"id": client_id, "user_email": current_user["email"]},
+        {"id": client_id},
         {"$set": client_data.model_dump()}
     )
     
@@ -282,8 +176,8 @@ async def update_client(client_id: str, client_data: ClientCreate, current_user 
     return updated_client
 
 @api_router.delete("/clients/{client_id}")
-async def delete_client(client_id: str, current_user = Depends(get_current_user)):
-    result = await db.clients.delete_one({"id": client_id, "user_email": current_user["email"]})
+async def delete_client(client_id: str):
+    result = await db.clients.delete_one({"id": client_id})
     
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -293,9 +187,9 @@ async def delete_client(client_id: str, current_user = Depends(get_current_user)
 # ============= Invoice Routes =============
 
 @api_router.post("/invoices", response_model=Invoice)
-async def create_invoice(invoice_data: InvoiceCreate, current_user = Depends(get_current_user)):
+async def create_invoice(invoice_data: InvoiceCreate):
     # Get client to determine state for GST calculation
-    client = await db.clients.find_one({"id": invoice_data.client_id, "user_email": current_user["email"]}, {"_id": 0})
+    client = await db.clients.find_one({"id": invoice_data.client_id}, {"_id": 0})
     
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -321,20 +215,19 @@ async def create_invoice(invoice_data: InvoiceCreate, current_user = Depends(get
     invoice_doc["payment_status"] = "unpaid"
     invoice_doc["paid_amount"] = 0.0
     invoice_doc["created_at"] = datetime.now(timezone.utc).isoformat()
-    invoice_doc["user_email"] = current_user["email"]
     
     await db.invoices.insert_one(invoice_doc)
     
     return Invoice(**{k: v for k, v in invoice_doc.items() if k != "_id"})
 
 @api_router.get("/invoices", response_model=List[Invoice])
-async def get_invoices(current_user = Depends(get_current_user)):
-    invoices = await db.invoices.find({"user_email": current_user["email"]}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+async def get_invoices():
+    invoices = await db.invoices.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
     return invoices
 
 @api_router.get("/invoices/{invoice_id}", response_model=Invoice)
-async def get_invoice(invoice_id: str, current_user = Depends(get_current_user)):
-    invoice = await db.invoices.find_one({"id": invoice_id, "user_email": current_user["email"]}, {"_id": 0})
+async def get_invoice(invoice_id: str):
+    invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
     
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -342,14 +235,14 @@ async def get_invoice(invoice_id: str, current_user = Depends(get_current_user))
     return invoice
 
 @api_router.put("/invoices/{invoice_id}", response_model=Invoice)
-async def update_invoice(invoice_id: str, update_data: InvoiceUpdate, current_user = Depends(get_current_user)):
+async def update_invoice(invoice_id: str, update_data: InvoiceUpdate):
     update_dict = {k: v for k, v in update_data.model_dump().items() if v is not None}
     
     if not update_dict:
         raise HTTPException(status_code=400, detail="No data to update")
     
     result = await db.invoices.update_one(
-        {"id": invoice_id, "user_email": current_user["email"]},
+        {"id": invoice_id},
         {"$set": update_dict}
     )
     
@@ -362,12 +255,12 @@ async def update_invoice(invoice_id: str, update_data: InvoiceUpdate, current_us
 # ============= Dashboard Routes =============
 
 @api_router.get("/dashboard/stats", response_model=DashboardStats)
-async def get_dashboard_stats(current_user = Depends(get_current_user)):
-    # Get all invoices for the user
-    invoices = await db.invoices.find({"user_email": current_user["email"]}, {"_id": 0}).to_list(1000)
+async def get_dashboard_stats():
+    # Get all invoices
+    invoices = await db.invoices.find({}, {"_id": 0}).to_list(1000)
     
     # Get total clients
-    total_clients = await db.clients.count_documents({"user_email": current_user["email"]})
+    total_clients = await db.clients.count_documents({})
     
     # Calculate stats
     total_invoices = len(invoices)
@@ -390,11 +283,7 @@ async def get_dashboard_stats(current_user = Depends(get_current_user)):
 # ============= Reports Routes =============
 
 @api_router.get("/reports/gst", response_model=GSTReport)
-async def get_gst_report(
-    start_date: str,
-    end_date: str,
-    current_user = Depends(get_current_user)
-):
+async def get_gst_report(start_date: str, end_date: str):
     # Parse dates
     try:
         start = datetime.fromisoformat(start_date)
@@ -404,7 +293,6 @@ async def get_gst_report(
     
     # Get invoices in date range
     invoices = await db.invoices.find({
-        "user_email": current_user["email"],
         "invoice_date": {
             "$gte": start.isoformat(),
             "$lte": end.isoformat()
@@ -430,6 +318,12 @@ async def get_gst_report(
         total_tax=total_tax,
         total_invoice_value=total_invoice_value
     )
+
+# ============= Health Check =============
+
+@api_router.get("/health")
+async def health_check():
+    return {"status": "healthy", "app": "DeepByte Verxe GST Billing"}
 
 # Include the router in the main app
 app.include_router(api_router)
