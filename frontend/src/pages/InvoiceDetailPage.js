@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '@/lib/api';
+import api from '@/lib/electronAPI';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,8 @@ import { Sidebar } from '@/components/Sidebar';
 import { ArrowLeft, Download, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { COMPANY_INFO } from '@/lib/constants';
-import { useReactToPrint } from 'react-to-print';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 export default function InvoiceDetailPage() {
   const { id } = useParams();
@@ -27,24 +28,31 @@ export default function InvoiceDetailPage() {
   const [client, setClient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [logoBase64, setLogoBase64] = useState(null);
   
   const [paymentStatus, setPaymentStatus] = useState('');
   const [paidAmount, setPaidAmount] = useState(0);
 
   useEffect(() => {
     fetchInvoiceData();
+    fetchLogo();
   }, [id]);
 
   const fetchInvoiceData = async () => {
     try {
-      const invoiceRes = await api.get(`/invoices/${id}`);
-      const invoiceData = invoiceRes.data;
+      const invoiceData = await api.getInvoice(id);
+      if (!invoiceData) {
+        toast.error('Invoice not found');
+        navigate('/invoices');
+        return;
+      }
+      
       setInvoice(invoiceData);
       setPaymentStatus(invoiceData.payment_status);
       setPaidAmount(invoiceData.paid_amount);
 
-      const clientRes = await api.get(`/clients/${invoiceData.client_id}`);
-      setClient(clientRes.data);
+      const clientData = await api.getClient(invoiceData.client_id);
+      setClient(clientData);
     } catch (error) {
       toast.error('Failed to load invoice');
       navigate('/invoices');
@@ -53,10 +61,19 @@ export default function InvoiceDetailPage() {
     }
   };
 
+  const fetchLogo = async () => {
+    try {
+      const logo = await api.getLogoBase64();
+      setLogoBase64(logo);
+    } catch (error) {
+      console.error('Failed to load logo:', error);
+    }
+  };
+
   const handleUpdatePayment = async () => {
     setUpdating(true);
     try {
-      await api.put(`/invoices/${id}`, {
+      await api.updateInvoice(id, {
         payment_status: paymentStatus,
         paid_amount: parseFloat(paidAmount),
       });
@@ -69,10 +86,173 @@ export default function InvoiceDetailPage() {
     }
   };
 
-  const handlePrint = useReactToPrint({
-    content: () => invoiceRef.current,
-    documentTitle: `Invoice-${invoice?.invoice_number}`,
-  });
+  const generatePDF = () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+    let yPos = 20;
+
+    // Add logo if available
+    if (logoBase64 && logoBase64.startsWith('data:image')) {
+      try {
+        doc.addImage(logoBase64, 'JPEG', 15, 10, 30, 30);
+        yPos = 15;
+      } catch (e) {
+        console.error('Failed to add logo to PDF:', e);
+      }
+    }
+
+    // Company Header
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text(COMPANY_INFO.name, logoBase64 ? 50 : 15, yPos);
+    
+    yPos += 7;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(COMPANY_INFO.address, logoBase64 ? 50 : 15, yPos);
+    yPos += 4;
+    doc.text(`Email: ${COMPANY_INFO.email} | Phone: ${COMPANY_INFO.phone}`, logoBase64 ? 50 : 15, yPos);
+    yPos += 4;
+    doc.text(`GSTIN: ${COMPANY_INFO.gstin} | CIN: ${COMPANY_INFO.cin}`, logoBase64 ? 50 : 15, yPos);
+
+    // Invoice Title
+    yPos = 50;
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('TAX INVOICE', pageWidth - 15, 20, { align: 'right' });
+    doc.setFontSize(12);
+    doc.text(`#${invoice.invoice_number}`, pageWidth - 15, 28, { align: 'right' });
+
+    // Draw line
+    doc.setLineWidth(0.5);
+    doc.line(15, yPos, pageWidth - 15, yPos);
+    yPos += 10;
+
+    // Bill To Section
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BILL TO:', 15, yPos);
+    doc.setFont('helvetica', 'normal');
+    yPos += 5;
+    doc.text(client?.name || '', 15, yPos);
+    yPos += 4;
+    doc.setFontSize(9);
+    doc.text(client?.address || '', 15, yPos);
+    yPos += 4;
+    doc.text(client?.state || '', 15, yPos);
+    yPos += 4;
+    doc.text(`${client?.email || ''} | ${client?.phone || ''}`, 15, yPos);
+    if (client?.gst_number) {
+      yPos += 4;
+      doc.text(`GSTIN: ${client.gst_number}`, 15, yPos);
+    }
+
+    // Invoice Details (right side)
+    const rightX = pageWidth - 60;
+    let rightY = 60;
+    doc.setFontSize(9);
+    doc.text('Invoice Date:', rightX, rightY);
+    doc.text(formatDate(invoice.invoice_date), rightX + 35, rightY);
+    rightY += 5;
+    doc.text('Due Date:', rightX, rightY);
+    doc.text(formatDate(invoice.due_date), rightX + 35, rightY);
+    rightY += 5;
+    doc.text('Status:', rightX, rightY);
+    doc.text(invoice.payment_status.toUpperCase(), rightX + 35, rightY);
+
+    // Line Items Table
+    yPos += 15;
+    const tableData = invoice.line_items.map(item => [
+      item.description,
+      item.hsn_sac_code,
+      item.quantity.toString(),
+      formatCurrency(item.rate),
+      formatCurrency(item.amount)
+    ]);
+
+    doc.autoTable({
+      startY: yPos,
+      head: [['Description', 'HSN/SAC', 'Qty', 'Rate', 'Amount']],
+      body: tableData,
+      theme: 'striped',
+      headStyles: { fillColor: [30, 41, 59], fontSize: 9 },
+      bodyStyles: { fontSize: 9 },
+      columnStyles: {
+        0: { cellWidth: 70 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 20, halign: 'right' },
+        3: { cellWidth: 30, halign: 'right' },
+        4: { cellWidth: 35, halign: 'right' }
+      },
+      margin: { left: 15, right: 15 }
+    });
+
+    // Totals
+    yPos = doc.lastAutoTable.finalY + 10;
+    const totalsX = pageWidth - 80;
+    
+    doc.setFontSize(9);
+    doc.text('Subtotal:', totalsX, yPos);
+    doc.text(formatCurrency(invoice.subtotal), pageWidth - 15, yPos, { align: 'right' });
+    
+    if (invoice.cgst > 0) {
+      yPos += 5;
+      doc.text('CGST (9%):', totalsX, yPos);
+      doc.text(formatCurrency(invoice.cgst), pageWidth - 15, yPos, { align: 'right' });
+      yPos += 5;
+      doc.text('SGST (9%):', totalsX, yPos);
+      doc.text(formatCurrency(invoice.sgst), pageWidth - 15, yPos, { align: 'right' });
+    }
+    
+    if (invoice.igst > 0) {
+      yPos += 5;
+      doc.text('IGST (18%):', totalsX, yPos);
+      doc.text(formatCurrency(invoice.igst), pageWidth - 15, yPos, { align: 'right' });
+    }
+
+    yPos += 8;
+    doc.setLineWidth(0.3);
+    doc.line(totalsX, yPos - 3, pageWidth - 15, yPos - 3);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Total Amount:', totalsX, yPos);
+    doc.text(formatCurrency(invoice.total), pageWidth - 15, yPos, { align: 'right' });
+
+    if (invoice.paid_amount > 0) {
+      yPos += 6;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Paid Amount:', totalsX, yPos);
+      doc.text(formatCurrency(invoice.paid_amount), pageWidth - 15, yPos, { align: 'right' });
+      yPos += 5;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Balance Due:', totalsX, yPos);
+      doc.text(formatCurrency(invoice.total - invoice.paid_amount), pageWidth - 15, yPos, { align: 'right' });
+    }
+
+    // Notes
+    if (invoice.notes) {
+      yPos += 15;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Notes:', 15, yPos);
+      doc.setFont('helvetica', 'normal');
+      yPos += 5;
+      const splitNotes = doc.splitTextToSize(invoice.notes, pageWidth - 30);
+      doc.text(splitNotes, 15, yPos);
+    }
+
+    // Footer
+    const footerY = doc.internal.pageSize.height - 20;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Thank you for your business!', pageWidth / 2, footerY, { align: 'center' });
+    doc.text(`Generated by ${COMPANY_INFO.name}`, pageWidth / 2, footerY + 5, { align: 'center' });
+
+    // Save PDF
+    doc.save(`Invoice-${invoice.invoice_number}.pdf`);
+    toast.success('PDF downloaded successfully');
+  };
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
@@ -120,14 +300,14 @@ export default function InvoiceDetailPage() {
               </Button>
               <div>
                 <h1 className="font-heading font-black text-4xl tracking-tight text-primary">
-                  Invoice {invoice?.invoice_number}
+                  Invoice #{invoice?.invoice_number}
                 </h1>
                 <p className="text-slate-500 mt-2">View and manage invoice details</p>
               </div>
             </div>
             <Button 
               data-testid="download-pdf-button"
-              onClick={handlePrint}
+              onClick={generatePDF}
             >
               <Download className="w-4 h-4 mr-2" />
               Download PDF
@@ -144,28 +324,38 @@ export default function InvoiceDetailPage() {
                     {/* Header */}
                     <div className="border-b-4 border-primary pb-6 mb-6">
                       <div className="flex justify-between items-start">
-                        <div>
-                          <h1 className="font-heading font-black text-3xl text-primary">
-                            {COMPANY_INFO.name}
-                          </h1>
-                          <p className="text-sm text-slate-600 mt-2 max-w-xs">
-                            {COMPANY_INFO.address}
-                          </p>
-                          <p className="text-sm text-slate-600">
-                            Email: {COMPANY_INFO.email}
-                          </p>
-                          <p className="text-sm text-slate-600">
-                            Phone: {COMPANY_INFO.phone}
-                          </p>
-                          <p className="text-sm font-mono text-slate-600 mt-2">
-                            GSTIN: {COMPANY_INFO.gstin}
-                          </p>
-                          <p className="text-sm font-mono text-slate-600">
-                            CIN: {COMPANY_INFO.cin}
-                          </p>
+                        <div className="flex items-start gap-4">
+                          {logoBase64 && (
+                            <img 
+                              src={typeof logoBase64 === 'string' && logoBase64.startsWith('data:') ? logoBase64 : '/company_logo.jpg'}
+                              alt="Company Logo" 
+                              className="w-16 h-16 object-contain"
+                              onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                          )}
+                          <div>
+                            <h1 className="font-heading font-black text-3xl text-primary">
+                              {COMPANY_INFO.name}
+                            </h1>
+                            <p className="text-sm text-slate-600 mt-2 max-w-xs">
+                              {COMPANY_INFO.address}
+                            </p>
+                            <p className="text-sm text-slate-600">
+                              Email: {COMPANY_INFO.email}
+                            </p>
+                            <p className="text-sm text-slate-600">
+                              Phone: {COMPANY_INFO.phone}
+                            </p>
+                            <p className="text-sm font-mono text-slate-600 mt-2">
+                              GSTIN: {COMPANY_INFO.gstin}
+                            </p>
+                            <p className="text-sm font-mono text-slate-600">
+                              CIN: {COMPANY_INFO.cin}
+                            </p>
+                          </div>
                         </div>
                         <div className="text-right">
-                          <h2 className="font-heading font-bold text-2xl text-primary">INVOICE</h2>
+                          <h2 className="font-heading font-bold text-2xl text-primary">TAX INVOICE</h2>
                           <p className="font-mono text-lg font-bold text-primary mt-2">
                             #{invoice?.invoice_number}
                           </p>
