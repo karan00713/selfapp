@@ -1,7 +1,11 @@
 {
-  "name": "frontend",
-  "version": "0.1.0",
+  "name": "deepbyte-gst-billing",
+  "version": "1.0.0",
+  "description": "GST Billing Software for DeepByte Verxe LLP",
+  "author": "DeepByte Verxe LLP",
   "private": true,
+  "main": "electron/main.js",
+  "homepage": "./",
   "dependencies": {
     "@fontsource/chivo": "^5.2.8",
     "@fontsource/ibm-plex-sans": "^5.2.8",
