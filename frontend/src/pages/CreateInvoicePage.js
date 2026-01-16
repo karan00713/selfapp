@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '@/lib/api';
+import api from '@/lib/electronAPI';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,8 +12,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Sidebar } from '@/components/Sidebar';
-import { Plus, Trash2, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { COMPANY_INFO } from '@/lib/constants';
 import { Textarea } from '@/components/ui/textarea';
@@ -23,6 +37,10 @@ export default function CreateInvoicePage() {
   const [clients, setClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [hsnCodes, setHsnCodes] = useState([]);
+  const [hsnDialogOpen, setHsnDialogOpen] = useState(false);
+  const [hsnSearchQuery, setHsnSearchQuery] = useState('');
+  const [activeLineItemIndex, setActiveLineItemIndex] = useState(null);
   
   const [formData, setFormData] = useState({
     client_id: '',
@@ -36,14 +54,24 @@ export default function CreateInvoicePage() {
 
   useEffect(() => {
     fetchClients();
+    fetchHSNCodes();
   }, []);
 
   const fetchClients = async () => {
     try {
-      const response = await api.get('/clients');
-      setClients(response.data);
+      const data = await api.getClients();
+      setClients(data);
     } catch (error) {
       toast.error('Failed to load clients');
+    }
+  };
+
+  const fetchHSNCodes = async () => {
+    try {
+      const data = await api.getHSNCodes();
+      setHsnCodes(data);
+    } catch (error) {
+      console.error('Failed to load HSN codes:', error);
     }
   };
 
@@ -82,6 +110,24 @@ export default function CreateInvoicePage() {
     }
   };
 
+  const openHsnDialog = (index) => {
+    setActiveLineItemIndex(index);
+    setHsnSearchQuery('');
+    setHsnDialogOpen(true);
+  };
+
+  const selectHsnCode = (code) => {
+    if (activeLineItemIndex !== null) {
+      handleLineItemChange(activeLineItemIndex, 'hsn_sac_code', code.HSN_CD);
+    }
+    setHsnDialogOpen(false);
+  };
+
+  const filteredHsnCodes = hsnCodes.filter(code => 
+    code.HSN_CD.toLowerCase().includes(hsnSearchQuery.toLowerCase()) ||
+    code.HSN_Description.toLowerCase().includes(hsnSearchQuery.toLowerCase())
+  ).slice(0, 100); // Limit to 100 results for performance
+
   const calculateSubtotal = () => {
     return formData.line_items.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
   };
@@ -118,11 +164,11 @@ export default function CreateInvoicePage() {
     setLoading(true);
     
     try {
-      const response = await api.post('/invoices', formData);
+      const response = await api.createInvoice(formData);
       toast.success('Invoice created successfully');
-      navigate(`/invoices/${response.data.id}`);
+      navigate(`/invoices/${response.id}`);
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to create invoice');
+      toast.error(error.message || 'Failed to create invoice');
     } finally {
       setLoading(false);
     }
@@ -292,13 +338,25 @@ export default function CreateInvoicePage() {
 
                           <div className="space-y-2">
                             <Label className="text-xs">HSN/SAC Code *</Label>
-                            <Input
-                              data-testid={`line-item-${index}-hsn`}
-                              required
-                              value={item.hsn_sac_code}
-                              onChange={(e) => handleLineItemChange(index, 'hsn_sac_code', e.target.value)}
-                              placeholder="e.g., 998314"
-                            />
+                            <div className="flex gap-2">
+                              <Input
+                                data-testid={`line-item-${index}-hsn`}
+                                required
+                                value={item.hsn_sac_code}
+                                onChange={(e) => handleLineItemChange(index, 'hsn_sac_code', e.target.value)}
+                                placeholder="e.g., 998314"
+                                className="flex-1"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={() => openHsnDialog(index)}
+                                data-testid={`hsn-lookup-${index}`}
+                              >
+                                <Search className="w-4 h-4" />
+                              </Button>
+                            </div>
                           </div>
 
                           <div className="space-y-2">
@@ -439,6 +497,68 @@ export default function CreateInvoicePage() {
               </div>
             </div>
           </form>
+
+          {/* HSN/SAC Code Lookup Dialog */}
+          <Dialog open={hsnDialogOpen} onOpenChange={setHsnDialogOpen}>
+            <DialogContent className="max-w-3xl max-h-[80vh]">
+              <DialogHeader>
+                <DialogTitle className="font-heading font-bold text-xl">
+                  Search HSN/SAC Codes
+                </DialogTitle>
+              </DialogHeader>
+              
+              <div className="space-y-4">
+                <Input
+                  data-testid="hsn-search-input"
+                  placeholder="Search by code or description..."
+                  value={hsnSearchQuery}
+                  onChange={(e) => setHsnSearchQuery(e.target.value)}
+                  autoFocus
+                />
+                
+                <div className="max-h-96 overflow-y-auto border rounded-md">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-32">Code</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="w-20"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredHsnCodes.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-center text-slate-500 py-8">
+                            {hsnSearchQuery ? 'No matching codes found' : 'Start typing to search...'}
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredHsnCodes.map((code, idx) => (
+                          <TableRow 
+                            key={idx}
+                            className="cursor-pointer hover:bg-slate-50"
+                            onClick={() => selectHsnCode(code)}
+                          >
+                            <TableCell className="font-mono font-medium">{code.HSN_CD}</TableCell>
+                            <TableCell className="text-sm">{code.HSN_Description}</TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="ghost">Select</Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                
+                {filteredHsnCodes.length === 100 && (
+                  <p className="text-xs text-slate-500 text-center">
+                    Showing first 100 results. Refine your search for more specific results.
+                  </p>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </div>
