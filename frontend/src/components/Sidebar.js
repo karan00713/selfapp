@@ -45,6 +45,12 @@ export const Sidebar = () => {
       testId: 'nav-hsn-codes',
     },
     {
+      name: 'Bank Details',
+      icon: Landmark,
+      path: '/bank-details',
+      testId: 'nav-bank-details',
+    },
+    {
       name: 'Reports',
       icon: BarChart3,
       path: '/reports',
