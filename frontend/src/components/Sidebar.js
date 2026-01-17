@@ -5,7 +5,8 @@ import {
   FileText, 
   BarChart3,
   BookOpen,
-  Package
+  Package,
+  Landmark
 } from 'lucide-react';
 
 export const Sidebar = () => {
