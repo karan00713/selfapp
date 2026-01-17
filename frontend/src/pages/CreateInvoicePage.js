@@ -27,7 +27,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Sidebar } from '@/components/Sidebar';
-import { Plus, Trash2, ArrowLeft, Search } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, Search, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { COMPANY_INFO } from '@/lib/constants';
 import { Textarea } from '@/components/ui/textarea';
@@ -38,8 +38,11 @@ export default function CreateInvoicePage() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [loading, setLoading] = useState(false);
   const [hsnCodes, setHsnCodes] = useState([]);
+  const [products, setProducts] = useState([]);
   const [hsnDialogOpen, setHsnDialogOpen] = useState(false);
+  const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [hsnSearchQuery, setHsnSearchQuery] = useState('');
+  const [productSearchQuery, setProductSearchQuery] = useState('');
   const [activeLineItemIndex, setActiveLineItemIndex] = useState(null);
   
   const [formData, setFormData] = useState({
@@ -55,6 +58,7 @@ export default function CreateInvoicePage() {
   useEffect(() => {
     fetchClients();
     fetchHSNCodes();
+    fetchProducts();
   }, []);
 
   const fetchClients = async () => {
@@ -72,6 +76,15 @@ export default function CreateInvoicePage() {
       setHsnCodes(data);
     } catch (error) {
       console.error('Failed to load HSN codes:', error);
+    }
+  };
+
+  const fetchProducts = async () => {
+    try {
+      const data = await api.getProducts();
+      setProducts(data);
+    } catch (error) {
+      console.error('Failed to load products:', error);
     }
   };
 
@@ -116,6 +129,12 @@ export default function CreateInvoicePage() {
     setHsnDialogOpen(true);
   };
 
+  const openProductDialog = (index) => {
+    setActiveLineItemIndex(index);
+    setProductSearchQuery('');
+    setProductDialogOpen(true);
+  };
+
   const selectHsnCode = (code) => {
     if (activeLineItemIndex !== null) {
       handleLineItemChange(activeLineItemIndex, 'hsn_sac_code', code.HSN_CD);
@@ -123,10 +142,30 @@ export default function CreateInvoicePage() {
     setHsnDialogOpen(false);
   };
 
+  const selectProduct = (product) => {
+    if (activeLineItemIndex !== null) {
+      const newLineItems = [...formData.line_items];
+      newLineItems[activeLineItemIndex] = {
+        description: product.name,
+        hsn_sac_code: product.hsn_sac_code,
+        quantity: 1,
+        rate: product.price,
+        amount: product.price
+      };
+      setFormData({ ...formData, line_items: newLineItems });
+    }
+    setProductDialogOpen(false);
+  };
+
   const filteredHsnCodes = hsnCodes.filter(code => 
     code.HSN_CD.toLowerCase().includes(hsnSearchQuery.toLowerCase()) ||
     code.HSN_Description.toLowerCase().includes(hsnSearchQuery.toLowerCase())
-  ).slice(0, 100); // Limit to 100 results for performance
+  ).slice(0, 100);
+
+  const filteredProducts = products.filter(product => 
+    product.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+    product.hsn_sac_code.toLowerCase().includes(productSearchQuery.toLowerCase())
+  );
 
   const calculateSubtotal = () => {
     return formData.line_items.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
@@ -311,17 +350,29 @@ export default function CreateInvoicePage() {
                       >
                         <div className="flex items-start justify-between">
                           <h4 className="font-medium text-sm text-slate-900">Item {index + 1}</h4>
-                          {formData.line_items.length > 1 && (
+                          <div className="flex gap-2">
                             <Button
-                              data-testid={`remove-line-item-${index}-button`}
+                              data-testid={`select-product-${index}-button`}
                               type="button"
-                              variant="ghost"
+                              variant="outline"
                               size="sm"
-                              onClick={() => removeLineItem(index)}
+                              onClick={() => openProductDialog(index)}
                             >
-                              <Trash2 className="w-4 h-4 text-destructive" />
+                              <Package className="w-4 h-4 mr-1" />
+                              Choose Product
                             </Button>
-                          )}
+                            {formData.line_items.length > 1 && (
+                              <Button
+                                data-testid={`remove-line-item-${index}-button`}
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeLineItem(index)}
+                              >
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
@@ -556,6 +607,64 @@ export default function CreateInvoicePage() {
                     Showing first 100 results. Refine your search for more specific results.
                   </p>
                 )}
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Product/Service Selection Dialog */}
+          <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
+            <DialogContent className="max-w-2xl max-h-[80vh]">
+              <DialogHeader>
+                <DialogTitle className="font-heading font-bold text-xl">
+                  Select Product/Service
+                </DialogTitle>
+              </DialogHeader>
+              
+              <div className="space-y-4">
+                <Input
+                  data-testid="product-search-dialog-input"
+                  placeholder="Search products/services..."
+                  value={productSearchQuery}
+                  onChange={(e) => setProductSearchQuery(e.target.value)}
+                  autoFocus
+                />
+                
+                <div className="max-h-96 overflow-y-auto border rounded-md">
+                  {filteredProducts.length === 0 ? (
+                    <div className="text-center text-slate-500 py-8">
+                      <Package className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                      <p>{products.length === 0 ? 'No products/services defined yet' : 'No matching products found'}</p>
+                      <p className="text-sm mt-1">Add products in the "Products & Services" menu</p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>HSN/SAC</TableHead>
+                          <TableHead className="text-right">Price</TableHead>
+                          <TableHead className="w-20"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredProducts.map((product) => (
+                          <TableRow 
+                            key={product.id}
+                            className="cursor-pointer hover:bg-slate-50"
+                            onClick={() => selectProduct(product)}
+                          >
+                            <TableCell className="font-medium">{product.name}</TableCell>
+                            <TableCell className="font-mono text-sm">{product.hsn_sac_code}</TableCell>
+                            <TableCell className="text-right font-mono">{formatCurrency(product.price)}</TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="ghost">Select</Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
               </div>
             </DialogContent>
           </Dialog>
