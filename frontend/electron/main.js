@@ -5,11 +5,108 @@ const fs = require('fs');
 
 let mainWindow;
 let db;
+let backupInterval;
 
 // Get user data path for storing database
 const userDataPath = app.getPath('userData');
 const dbPath = path.join(userDataPath, 'gst_billing.db');
-const logoPath = path.join(__dirname, '../public/company_logo.jpg');
+const backupDir = path.join(userDataPath, 'backups');
+
+// Get current Indian financial year (April to March)
+function getCurrentFinancialYear() {
+  const now = new Date();
+  if (now.getMonth() >= 3) { // April onwards
+    return `${now.getFullYear()}-${now.getFullYear() + 1}`;
+  } else { // January to March
+    return `${now.getFullYear() - 1}-${now.getFullYear()}`;
+  }
+}
+
+// Create backup directory if it doesn't exist
+function ensureBackupDir() {
+  if (!fs.existsSync(backupDir)) {
+    fs.mkdirSync(backupDir, { recursive: true });
+  }
+}
+
+// Create automatic backup
+function createBackup() {
+  ensureBackupDir();
+  
+  const now = new Date();
+  const timestamp = `${now.getDate().toString().padStart(2, '0')}_${(now.getMonth() + 1).toString().padStart(2, '0')}_${now.getFullYear()}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
+  const backupFileName = `${timestamp}.json`;
+  const backupPath = path.join(backupDir, backupFileName);
+  
+  try {
+    // Get all data
+    const clients = db.prepare('SELECT * FROM clients').all();
+    const invoices = db.prepare('SELECT * FROM invoices').all();
+    const products = db.prepare('SELECT * FROM products').all();
+    const settings = db.prepare('SELECT * FROM settings').all();
+    
+    const backupData = {
+      timestamp: now.toISOString(),
+      filename: backupFileName,
+      data: {
+        clients,
+        invoices,
+        products,
+        settings
+      }
+    };
+    
+    fs.writeFileSync(backupPath, JSON.stringify(backupData, null, 2));
+    console.log('Backup created:', backupPath);
+    
+    // Clean up old backups (keep last 30 days)
+    cleanupOldBackups();
+    
+    return { success: true, path: backupPath, filename: backupFileName };
+  } catch (error) {
+    console.error('Backup failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Clean up backups older than 30 days
+function cleanupOldBackups() {
+  const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+  
+  try {
+    const files = fs.readdirSync(backupDir);
+    files.forEach(file => {
+      const filePath = path.join(backupDir, file);
+      const stats = fs.statSync(filePath);
+      if (stats.mtimeMs < thirtyDaysAgo) {
+        fs.unlinkSync(filePath);
+        console.log('Deleted old backup:', file);
+      }
+    });
+  } catch (error) {
+    console.error('Cleanup error:', error);
+  }
+}
+
+// Schedule daily backup at end of day (11:59 PM)
+function scheduleDailyBackup() {
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setHours(23, 59, 0, 0);
+  
+  let delay = midnight.getTime() - now.getTime();
+  if (delay < 0) {
+    delay += 24 * 60 * 60 * 1000; // Next day
+  }
+  
+  setTimeout(() => {
+    createBackup();
+    // Then schedule for every 24 hours
+    backupInterval = setInterval(createBackup, 24 * 60 * 60 * 1000);
+  }, delay);
+  
+  console.log(`Daily backup scheduled in ${Math.round(delay / 1000 / 60)} minutes`);
+}
 
 function initDatabase() {
   db = new Database(dbPath);
@@ -50,19 +147,36 @@ function initDatabase() {
       FOREIGN KEY (client_id) REFERENCES clients(id)
     );
 
+    CREATE TABLE IF NOT EXISTS products (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      hsn_sac_code TEXT NOT NULL,
+      price REAL NOT NULL,
+      description TEXT,
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
   `);
 
-  // Initialize invoice counter if not exists - START FROM 0 so first invoice is 0001
-  const counter = db.prepare('SELECT value FROM settings WHERE key = ?').get('invoice_counter');
-  if (!counter) {
-    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('invoice_counter', '0');
-  }
-
   console.log('Database initialized at:', dbPath);
+  
+  // Schedule daily backups
+  scheduleDailyBackup();
+  
+  // Create initial backup on first run
+  const lastBackupKey = 'last_backup_date';
+  const today = new Date().toDateString();
+  const stmt = db.prepare('SELECT value FROM settings WHERE key = ?');
+  const lastBackup = stmt.get(lastBackupKey);
+  
+  if (!lastBackup || lastBackup.value !== today) {
+    createBackup();
+    db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(lastBackupKey, today);
+  }
 }
 
 function createWindow() {
@@ -107,6 +221,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    if (backupInterval) clearInterval(backupInterval);
     if (db) db.close();
     app.quit();
   }
@@ -182,6 +297,60 @@ ipcMain.handle('clients:delete', (event, id) => {
   return { success: true };
 });
 
+// ----- Products/Services -----
+ipcMain.handle('products:getAll', () => {
+  const products = db.prepare('SELECT * FROM products ORDER BY name ASC').all();
+  return products;
+});
+
+ipcMain.handle('products:getById', (event, id) => {
+  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  return product;
+});
+
+ipcMain.handle('products:create', (event, productData) => {
+  const id = Date.now().toString();
+  const created_at = new Date().toISOString();
+  
+  const stmt = db.prepare(`
+    INSERT INTO products (id, name, hsn_sac_code, price, description, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  
+  stmt.run(
+    id,
+    productData.name,
+    productData.hsn_sac_code,
+    productData.price,
+    productData.description || null,
+    created_at
+  );
+  
+  return { id, ...productData, created_at };
+});
+
+ipcMain.handle('products:update', (event, id, productData) => {
+  const stmt = db.prepare(`
+    UPDATE products SET name = ?, hsn_sac_code = ?, price = ?, description = ?
+    WHERE id = ?
+  `);
+  
+  stmt.run(
+    productData.name,
+    productData.hsn_sac_code,
+    productData.price,
+    productData.description || null,
+    id
+  );
+  
+  return db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+});
+
+ipcMain.handle('products:delete', (event, id) => {
+  db.prepare('DELETE FROM products WHERE id = ?').run(id);
+  return { success: true };
+});
+
 // ----- Invoices -----
 ipcMain.handle('invoices:getAll', () => {
   const invoices = db.prepare('SELECT * FROM invoices ORDER BY created_at DESC').all();
@@ -203,15 +372,19 @@ ipcMain.handle('invoices:create', (event, invoiceData) => {
   const id = Date.now().toString();
   const created_at = new Date().toISOString();
   
-  // Get and increment invoice counter - this ensures first invoice is 0001
-  const counterRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('invoice_counter');
-  let currentCounter = parseInt(counterRow.value, 10);
-  currentCounter += 1; // Increment FIRST, then use
+  // Get financial year specific counter
+  const currentFY = getCurrentFinancialYear();
+  const counterKey = `invoice_counter_${currentFY}`;
+  
+  // Get and increment invoice counter
+  let counterRow = db.prepare('SELECT value FROM settings WHERE key = ?').get(counterKey);
+  let currentCounter = counterRow ? parseInt(counterRow.value, 10) : 0;
+  currentCounter += 1; // Increment FIRST, then use - so first invoice is 0001
   
   const invoice_number = currentCounter.toString().padStart(4, '0');
   
   // Update counter
-  db.prepare('UPDATE settings SET value = ? WHERE key = ?').run(currentCounter.toString(), 'invoice_counter');
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(counterKey, currentCounter.toString());
   
   // Get client for GST calculation
   const client = db.prepare('SELECT state FROM clients WHERE id = ?').get(invoiceData.client_id);
@@ -354,27 +527,79 @@ ipcMain.handle('reports:getGST', (event, startDate, endDate) => {
   };
 });
 
-// ----- Company Logo -----
-ipcMain.handle('app:getLogoBase64', () => {
+// ----- Backup -----
+ipcMain.handle('backup:create', () => {
+  return createBackup();
+});
+
+ipcMain.handle('backup:list', () => {
+  ensureBackupDir();
   try {
-    // Try to read from multiple possible locations
-    const possiblePaths = [
-      path.join(__dirname, '../public/company_logo.jpg'),
-      path.join(__dirname, '../build/company_logo.jpg'),
-      path.join(process.resourcesPath, 'company_logo.jpg')
-    ];
-    
-    for (const logoPath of possiblePaths) {
-      if (fs.existsSync(logoPath)) {
-        const logoBuffer = fs.readFileSync(logoPath);
-        return `data:image/jpeg;base64,${logoBuffer.toString('base64')}`;
-      }
-    }
-    return null;
+    const files = fs.readdirSync(backupDir)
+      .filter(f => f.endsWith('.json'))
+      .map(f => ({
+        filename: f,
+        path: path.join(backupDir, f),
+        created: fs.statSync(path.join(backupDir, f)).mtime
+      }))
+      .sort((a, b) => b.created - a.created);
+    return files;
   } catch (error) {
-    console.error('Error reading logo:', error);
-    return null;
+    return [];
   }
+});
+
+ipcMain.handle('backup:restore', (event, backupPath) => {
+  try {
+    const backupData = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
+    
+    // Clear existing data
+    db.prepare('DELETE FROM clients').run();
+    db.prepare('DELETE FROM invoices').run();
+    db.prepare('DELETE FROM products').run();
+    db.prepare('DELETE FROM settings').run();
+    
+    // Restore data
+    const { clients, invoices, products, settings } = backupData.data;
+    
+    if (clients && clients.length > 0) {
+      const insertClient = db.prepare(`
+        INSERT INTO clients (id, client_type, name, address, state, phone, email, aadhar_number, pan_number, cin, gst_number, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      clients.forEach(c => insertClient.run(c.id, c.client_type, c.name, c.address, c.state, c.phone, c.email, c.aadhar_number, c.pan_number, c.cin, c.gst_number, c.created_at));
+    }
+    
+    if (invoices && invoices.length > 0) {
+      const insertInvoice = db.prepare(`
+        INSERT INTO invoices (id, invoice_number, client_id, invoice_date, due_date, line_items, notes, subtotal, cgst, sgst, igst, total, payment_status, paid_amount, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      invoices.forEach(i => insertInvoice.run(i.id, i.invoice_number, i.client_id, i.invoice_date, i.due_date, i.line_items, i.notes, i.subtotal, i.cgst, i.sgst, i.igst, i.total, i.payment_status, i.paid_amount, i.created_at));
+    }
+    
+    if (products && products.length > 0) {
+      const insertProduct = db.prepare(`
+        INSERT INTO products (id, name, hsn_sac_code, price, description, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      products.forEach(p => insertProduct.run(p.id, p.name, p.hsn_sac_code, p.price, p.description, p.created_at));
+    }
+    
+    if (settings && settings.length > 0) {
+      const insertSetting = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)');
+      settings.forEach(s => insertSetting.run(s.key, s.value));
+    }
+    
+    return { success: true, message: 'Backup restored successfully' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('backup:getDir', () => {
+  ensureBackupDir();
+  return backupDir;
 });
 
 // ----- HSN/SAC Codes -----
