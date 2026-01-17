@@ -137,6 +137,21 @@ const webAPI = {
     });
     if (!res.ok) throw new Error('Failed to restore backup');
     return res.json();
+  },
+  // Bank Details
+  async getBankDetails() {
+    const res = await fetch(`${BACKEND_URL}/api/bank-details`);
+    if (!res.ok) throw new Error('Failed to fetch bank details');
+    return res.json();
+  },
+  async saveBankDetails(data) {
+    const res = await fetch(`${BACKEND_URL}/api/bank-details`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to save bank details');
+    return res.json();
   }
 };
 
