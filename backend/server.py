@@ -103,21 +103,47 @@ class GSTReport(BaseModel):
     total_tax: float
     total_invoice_value: float
 
+# Products/Services Models
+class ProductServiceBase(BaseModel):
+    name: str
+    hsn_sac_code: str
+    price: float
+    description: Optional[str] = None
+
+class ProductService(ProductServiceBase):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    created_at: str
+
+class ProductServiceCreate(ProductServiceBase):
+    pass
+
 # ============= Helper Functions =============
 
+def get_current_financial_year() -> str:
+    """Get current Indian financial year (April to March)"""
+    now = datetime.now()
+    if now.month >= 4:  # April onwards
+        return f"{now.year}-{now.year + 1}"
+    else:  # January to March
+        return f"{now.year - 1}-{now.year}"
+
 async def get_next_invoice_number() -> str:
-    """Generate next sequential invoice number starting from 0001"""
-    counter = await db.invoice_counter.find_one({"name": "invoice"})
+    """Generate next sequential invoice number, resets on April 1st each year"""
+    current_fy = get_current_financial_year()
+    counter_key = f"invoice_{current_fy}"
+    
+    counter = await db.invoice_counter.find_one({"name": counter_key})
     
     if not counter:
-        # Initialize counter to 0, first invoice will be 0001
-        await db.invoice_counter.insert_one({"name": "invoice", "current": 0})
+        # New financial year or first invoice ever - start from 0
+        await db.invoice_counter.insert_one({"name": counter_key, "current": 0})
         counter = {"current": 0}
     
     # Increment first, then use - so first invoice is 0001
     new_value = counter["current"] + 1
     await db.invoice_counter.update_one(
-        {"name": "invoice"},
+        {"name": counter_key},
         {"$set": {"current": new_value}}
     )
     
@@ -200,7 +226,7 @@ async def create_invoice(invoice_data: InvoiceCreate):
     # Calculate GST
     gst_details = calculate_gst(subtotal, client["state"])
     
-    # Get next invoice number
+    # Get next invoice number (resets on April 1st)
     invoice_number = await get_next_invoice_number()
     
     # Create invoice
@@ -251,6 +277,54 @@ async def update_invoice(invoice_id: str, update_data: InvoiceUpdate):
     
     updated_invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
     return updated_invoice
+
+# ============= Products/Services Routes =============
+
+@api_router.post("/products", response_model=ProductService)
+async def create_product(product_data: ProductServiceCreate):
+    product_doc = product_data.model_dump()
+    product_doc["id"] = str(datetime.now(timezone.utc).timestamp()).replace(".", "")
+    product_doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    
+    await db.products.insert_one(product_doc)
+    
+    return ProductService(**{k: v for k, v in product_doc.items() if k != "_id"})
+
+@api_router.get("/products", response_model=List[ProductService])
+async def get_products():
+    products = await db.products.find({}, {"_id": 0}).sort("name", 1).to_list(1000)
+    return products
+
+@api_router.get("/products/{product_id}", response_model=ProductService)
+async def get_product(product_id: str):
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    
+    if not product:
+        raise HTTPException(status_code=404, detail="Product/Service not found")
+    
+    return product
+
+@api_router.put("/products/{product_id}", response_model=ProductService)
+async def update_product(product_id: str, product_data: ProductServiceCreate):
+    result = await db.products.update_one(
+        {"id": product_id},
+        {"$set": product_data.model_dump()}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Product/Service not found")
+    
+    updated_product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    return updated_product
+
+@api_router.delete("/products/{product_id}")
+async def delete_product(product_id: str):
+    result = await db.products.delete_one({"id": product_id})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Product/Service not found")
+    
+    return {"message": "Product/Service deleted successfully"}
 
 # ============= Dashboard Routes =============
 
@@ -319,11 +393,62 @@ async def get_gst_report(start_date: str, end_date: str):
         total_invoice_value=total_invoice_value
     )
 
+# ============= Backup Routes =============
+
+@api_router.post("/backup/create")
+async def create_backup():
+    """Create a database backup"""
+    timestamp = datetime.now().strftime("%d_%m_%Y_%H%M%S")
+    
+    # Get all collections data
+    clients = await db.clients.find({}, {"_id": 0}).to_list(10000)
+    invoices = await db.invoices.find({}, {"_id": 0}).to_list(10000)
+    products = await db.products.find({}, {"_id": 0}).to_list(10000)
+    counters = await db.invoice_counter.find({}, {"_id": 0}).to_list(100)
+    
+    backup_data = {
+        "timestamp": timestamp,
+        "clients": clients,
+        "invoices": invoices,
+        "products": products,
+        "invoice_counters": counters
+    }
+    
+    return {
+        "filename": f"{timestamp}.json",
+        "data": backup_data,
+        "message": "Backup created successfully"
+    }
+
+@api_router.post("/backup/restore")
+async def restore_backup(backup_data: dict):
+    """Restore database from backup"""
+    try:
+        # Clear existing data
+        await db.clients.delete_many({})
+        await db.invoices.delete_many({})
+        await db.products.delete_many({})
+        await db.invoice_counter.delete_many({})
+        
+        # Restore data
+        if backup_data.get("clients"):
+            await db.clients.insert_many(backup_data["clients"])
+        if backup_data.get("invoices"):
+            await db.invoices.insert_many(backup_data["invoices"])
+        if backup_data.get("products"):
+            await db.products.insert_many(backup_data["products"])
+        if backup_data.get("invoice_counters"):
+            await db.invoice_counter.insert_many(backup_data["invoice_counters"])
+        
+        return {"message": "Backup restored successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Restore failed: {str(e)}")
+
 # ============= Health Check =============
 
 @api_router.get("/health")
 async def health_check():
-    return {"status": "healthy", "app": "DeepByte Verxe GST Billing"}
+    return {"status": "healthy", "app": "DeepByte Verxe GST Billing", "financial_year": get_current_financial_year()}
 
 # Include the router in the main app
 app.include_router(api_router)
