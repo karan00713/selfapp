@@ -190,6 +190,10 @@ const api = {
   createBackup: () => isElectron() ? window.electronAPI.createBackup() : webAPI.createBackup(),
   restoreBackup: (data) => isElectron() ? window.electronAPI.restoreBackup(data) : webAPI.restoreBackup(data),
   
+  // Bank Details
+  getBankDetails: () => isElectron() ? window.electronAPI.getBankDetails() : webAPI.getBankDetails(),
+  saveBankDetails: (data) => isElectron() ? window.electronAPI.saveBankDetails(data) : webAPI.saveBankDetails(data),
+  
   // Helper to check if running in Electron
   isElectron
 };
