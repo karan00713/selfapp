@@ -118,6 +118,22 @@ class ProductService(ProductServiceBase):
 class ProductServiceCreate(ProductServiceBase):
     pass
 
+# Bank Details Model
+class BankDetailsBase(BaseModel):
+    account_name: str
+    bank_name: str
+    account_number: str
+    branch: str
+    ifsc_code: str
+
+class BankDetails(BankDetailsBase):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    updated_at: str
+
+class BankDetailsUpdate(BankDetailsBase):
+    pass
+
 # ============= Helper Functions =============
 
 def get_current_financial_year() -> str:
@@ -326,6 +342,43 @@ async def delete_product(product_id: str):
     
     return {"message": "Product/Service deleted successfully"}
 
+# ============= Bank Details Routes =============
+
+@api_router.get("/bank-details")
+async def get_bank_details():
+    """Get configured bank details"""
+    bank_details = await db.bank_details.find_one({}, {"_id": 0})
+    
+    if not bank_details:
+        # Return empty defaults if not configured
+        return {
+            "id": None,
+            "account_name": "",
+            "bank_name": "",
+            "account_number": "",
+            "branch": "",
+            "ifsc_code": "",
+            "updated_at": None
+        }
+    
+    return bank_details
+
+@api_router.post("/bank-details", response_model=BankDetails)
+async def save_bank_details(bank_data: BankDetailsUpdate):
+    """Create or update bank details (only one record)"""
+    bank_doc = bank_data.model_dump()
+    bank_doc["id"] = "bank_details_main"
+    bank_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
+    # Upsert - create if not exists, update if exists
+    await db.bank_details.update_one(
+        {"id": "bank_details_main"},
+        {"$set": bank_doc},
+        upsert=True
+    )
+    
+    return BankDetails(**bank_doc)
+
 # ============= Dashboard Routes =============
 
 @api_router.get("/dashboard/stats", response_model=DashboardStats)
@@ -405,13 +458,15 @@ async def create_backup():
     invoices = await db.invoices.find({}, {"_id": 0}).to_list(10000)
     products = await db.products.find({}, {"_id": 0}).to_list(10000)
     counters = await db.invoice_counter.find({}, {"_id": 0}).to_list(100)
+    bank_details = await db.bank_details.find({}, {"_id": 0}).to_list(10)
     
     backup_data = {
         "timestamp": timestamp,
         "clients": clients,
         "invoices": invoices,
         "products": products,
-        "invoice_counters": counters
+        "invoice_counters": counters,
+        "bank_details": bank_details
     }
     
     return {
@@ -429,6 +484,7 @@ async def restore_backup(backup_data: dict):
         await db.invoices.delete_many({})
         await db.products.delete_many({})
         await db.invoice_counter.delete_many({})
+        await db.bank_details.delete_many({})
         
         # Restore data
         if backup_data.get("clients"):
@@ -439,6 +495,8 @@ async def restore_backup(backup_data: dict):
             await db.products.insert_many(backup_data["products"])
         if backup_data.get("invoice_counters"):
             await db.invoice_counter.insert_many(backup_data["invoice_counters"])
+        if backup_data.get("bank_details"):
+            await db.bank_details.insert_many(backup_data["bank_details"])
         
         return {"message": "Backup restored successfully"}
     except Exception as e:
