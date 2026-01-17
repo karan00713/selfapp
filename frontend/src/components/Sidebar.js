@@ -4,7 +4,8 @@ import {
   Users, 
   FileText, 
   BarChart3,
-  BookOpen
+  BookOpen,
+  Package
 } from 'lucide-react';
 
 export const Sidebar = () => {
