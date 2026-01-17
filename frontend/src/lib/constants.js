@@ -1,6 +1,6 @@
 export const COMPANY_INFO = {
   name: 'DeepByte Verxe LLP',
-  cin: 'ACO-5615',
+  llpin: 'ACO-5615',
   address: '35B, First floor, Chairman Nallamuthupillai Road, New Mahalipatti, Madurai - 625001',
   gstin: '33AYFD2259G1Z7',
   email: 'team@deepbyteverxe.com',
