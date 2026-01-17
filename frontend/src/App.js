@@ -7,6 +7,7 @@ import CreateInvoicePage from '@/pages/CreateInvoicePage';
 import InvoiceDetailPage from '@/pages/InvoiceDetailPage';
 import ReportsPage from '@/pages/ReportsPage';
 import HSNCodesPage from '@/pages/HSNCodesPage';
+import ProductsPage from '@/pages/ProductsPage';
 import '@/App.css';
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
         <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/hsn-codes" element={<HSNCodesPage />} />
+        <Route path="/products" element={<ProductsPage />} />
       </Routes>
       <Toaster position="top-right" />
     </HashRouter>
