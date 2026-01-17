@@ -80,12 +80,62 @@ const webAPI = {
     if (!res.ok) throw new Error('Failed to fetch GST report');
     return res.json();
   },
-  async getLogoBase64() {
-    return '/company_logo.jpg';
-  },
   async getHSNCodes() {
     const res = await fetch('/hsn_sac_codes.json');
     if (!res.ok) throw new Error('Failed to fetch HSN codes');
+    return res.json();
+  },
+  // Products/Services
+  async getProducts() {
+    const res = await fetch(`${BACKEND_URL}/api/products`);
+    if (!res.ok) throw new Error('Failed to fetch products');
+    return res.json();
+  },
+  async getProduct(id) {
+    const res = await fetch(`${BACKEND_URL}/api/products/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch product');
+    return res.json();
+  },
+  async createProduct(data) {
+    const res = await fetch(`${BACKEND_URL}/api/products`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to create product');
+    return res.json();
+  },
+  async updateProduct(id, data) {
+    const res = await fetch(`${BACKEND_URL}/api/products/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to update product');
+    return res.json();
+  },
+  async deleteProduct(id) {
+    const res = await fetch(`${BACKEND_URL}/api/products/${id}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) throw new Error('Failed to delete product');
+    return res.json();
+  },
+  // Backup
+  async createBackup() {
+    const res = await fetch(`${BACKEND_URL}/api/backup/create`, {
+      method: 'POST'
+    });
+    if (!res.ok) throw new Error('Failed to create backup');
+    return res.json();
+  },
+  async restoreBackup(data) {
+    const res = await fetch(`${BACKEND_URL}/api/backup/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to restore backup');
     return res.json();
   }
 };
@@ -111,9 +161,19 @@ const api = {
   // Reports
   getGSTReport: (startDate, endDate) => isElectron() ? window.electronAPI.getGSTReport(startDate, endDate) : webAPI.getGSTReport(startDate, endDate),
   
-  // Utilities
-  getLogoBase64: () => isElectron() ? window.electronAPI.getLogoBase64() : webAPI.getLogoBase64(),
+  // HSN Codes
   getHSNCodes: () => isElectron() ? window.electronAPI.getHSNCodes() : webAPI.getHSNCodes(),
+  
+  // Products/Services
+  getProducts: () => isElectron() ? window.electronAPI.getProducts() : webAPI.getProducts(),
+  getProduct: (id) => isElectron() ? window.electronAPI.getProduct(id) : webAPI.getProduct(id),
+  createProduct: (data) => isElectron() ? window.electronAPI.createProduct(data) : webAPI.createProduct(data),
+  updateProduct: (id, data) => isElectron() ? window.electronAPI.updateProduct(id, data) : webAPI.updateProduct(id, data),
+  deleteProduct: (id) => isElectron() ? window.electronAPI.deleteProduct(id) : webAPI.deleteProduct(id),
+  
+  // Backup
+  createBackup: () => isElectron() ? window.electronAPI.createBackup() : webAPI.createBackup(),
+  restoreBackup: (data) => isElectron() ? window.electronAPI.restoreBackup(data) : webAPI.restoreBackup(data),
   
   // Helper to check if running in Electron
   isElectron
