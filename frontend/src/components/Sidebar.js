@@ -32,6 +32,12 @@ export const Sidebar = () => {
       testId: 'nav-invoices',
     },
     {
+      name: 'Products & Services',
+      icon: Package,
+      path: '/products',
+      testId: 'nav-products',
+    },
+    {
       name: 'HSN/SAC Codes',
       icon: BookOpen,
       path: '/hsn-codes',
