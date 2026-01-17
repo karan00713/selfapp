@@ -8,6 +8,7 @@ import InvoiceDetailPage from '@/pages/InvoiceDetailPage';
 import ReportsPage from '@/pages/ReportsPage';
 import HSNCodesPage from '@/pages/HSNCodesPage';
 import ProductsPage from '@/pages/ProductsPage';
+import BankDetailsPage from '@/pages/BankDetailsPage';
 import '@/App.css';
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/hsn-codes" element={<HSNCodesPage />} />
         <Route path="/products" element={<ProductsPage />} />
+        <Route path="/bank-details" element={<BankDetailsPage />} />
       </Routes>
       <Toaster position="top-right" />
     </HashRouter>
