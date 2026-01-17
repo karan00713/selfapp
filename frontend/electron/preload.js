@@ -9,6 +9,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateClient: (id, data) => ipcRenderer.invoke('clients:update', id, data),
   deleteClient: (id) => ipcRenderer.invoke('clients:delete', id),
   
+  // Products/Services
+  getProducts: () => ipcRenderer.invoke('products:getAll'),
+  getProduct: (id) => ipcRenderer.invoke('products:getById', id),
+  createProduct: (data) => ipcRenderer.invoke('products:create', data),
+  updateProduct: (id, data) => ipcRenderer.invoke('products:update', id, data),
+  deleteProduct: (id) => ipcRenderer.invoke('products:delete', id),
+  
   // Invoices
   getInvoices: () => ipcRenderer.invoke('invoices:getAll'),
   getInvoice: (id) => ipcRenderer.invoke('invoices:getById', id),
@@ -21,7 +28,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Reports
   getGSTReport: (startDate, endDate) => ipcRenderer.invoke('reports:getGST', startDate, endDate),
   
-  // App utilities
-  getLogoBase64: () => ipcRenderer.invoke('app:getLogoBase64'),
+  // Backup
+  createBackup: () => ipcRenderer.invoke('backup:create'),
+  listBackups: () => ipcRenderer.invoke('backup:list'),
+  restoreBackup: (backupPath) => ipcRenderer.invoke('backup:restore', backupPath),
+  getBackupDir: () => ipcRenderer.invoke('backup:getDir'),
+  
+  // HSN/SAC Codes
   getHSNCodes: () => ipcRenderer.invoke('hsn:getAll'),
 });
